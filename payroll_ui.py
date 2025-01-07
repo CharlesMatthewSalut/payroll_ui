@@ -1,182 +1,136 @@
 import streamlit as st
 import pandas as pd
-from decimal import Decimal
-import json
-import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
+def calculate_overtime(hours, rate):
+    """Calculate overtime pay"""
+    if pd.isna(hours) or hours == 0:
+        return 0
+    return float(hours) * float(rate)
 
-class PayrollSystem:
-    def __init__(self):
-        self.data_file = 'payroll_data.json'
-        self.overtime_rate = Decimal('100')
-        self.load_data()
-
-    def load_data(self):
-        if 'employees' not in st.session_state:
-            st.session_state.employees = {}
-            if os.path.exists(self.data_file):
-                try:
-                    with open(self.data_file, 'r') as f:
-                        data = json.load(f)
-                        for emp_id, emp_data in data.items():
-                            self.add_employee(
-                                int(emp_id),
-                                emp_data['name'],
-                                float(emp_data['daily_rate']),
-                                float(emp_data['weekly_rate']),
-                                save=False
-                            )
-                            emp = st.session_state.employees[int(emp_id)]
-                            emp['overtime_hours'] = {k: Decimal(str(v)) for k, v in emp_data.get('overtime_hours', {}).items()}
-                            emp['deductions'] = {k: Decimal(str(v)) for k, v in emp_data.get('deductions', {}).items()}
-                except (FileNotFoundError, json.JSONDecodeError):
-                    st.error("Error loading payroll data file.")
-
-    def save_data(self):
-        try:
-            os.makedirs(os.path.dirname(self.data_file), exist_ok=True)
-            data = {
-                str(emp_id): {
-                    'name': emp_data['name'],
-                    'daily_rate': str(emp_data['daily_rate']),
-                    'weekly_rate': str(emp_data['weekly_rate']),
-                    'overtime_hours': {k: str(v) for k, v in emp_data['overtime_hours'].items()},
-                    'deductions': {k: str(v) for k, v in emp_data['deductions'].items()}
-                }
-                for emp_id, emp_data in st.session_state.employees.items()
-            }
-            with open(self.data_file, 'w') as f:
-                json.dump(data, f, indent=2)
-        except IOError:
-            st.error("Error saving payroll data.")
-
-    def add_employee(self, id, name, daily_rate, weekly_rate, save=True):
-        if not name or daily_rate <= 0 or weekly_rate <= 0:
-            st.error("Invalid employee data.")
-            return False
-
-        st.session_state.employees[id] = {
-            'name': name,
-            'daily_rate': Decimal(str(daily_rate)),
-            'weekly_rate': Decimal(str(weekly_rate)),
-            'overtime_hours': {str(i): Decimal('0') for i in range(7)},
-            'deductions': {
-                'cash_advance': Decimal('0'),
-                'snacks': Decimal('0'),
-                'sss_share': Decimal('0')
-            }
+def create_payroll_system():
+    st.title("Payroll Management System")
+    
+    # Initialize session state for employee data if not exists
+    if 'employees' not in st.session_state:
+        st.session_state.employees = {
+            'BERNARD': {'daily_rate': 400, 'weekly_rate': 2400},
+            'ERIC': {'daily_rate': 700, 'weekly_rate': 4200},
+            'HERACLEO MANATAD': {'daily_rate': 550, 'weekly_rate': 3300},
+            'NENEO': {'daily_rate': 450, 'weekly_rate': 2700},
+            'PEDRO': {'daily_rate': 800, 'weekly_rate': 4800},
+            'RENIER DELANTAR': {'daily_rate': 500, 'weekly_rate': 3000},
+            'ALCRIZ': {'daily_rate': 450, 'weekly_rate': 2700},
+            'JEDDA MONTANEZ': {'daily_rate': 500, 'weekly_rate': 3000},
+            'NICO MACARAYA': {'daily_rate': 650, 'weekly_rate': 3900},
+            'ANGELO': {'daily_rate': 350, 'weekly_rate': 2100},
+            'HANZ SALUT': {'daily_rate': 350, 'weekly_rate': 2100},
+            'CHARLES SALUT': {'daily_rate': 350, 'weekly_rate': 2100}
         }
-        if save:
-            self.save_data()
-        return True
 
-    def update_employee(self, id, field, value, day=None):
-        if id in st.session_state.employees:
-            emp = st.session_state.employees[id]
-            if field == 'overtime':
-                emp['overtime_hours'][str(day)] = Decimal(str(value))
-            elif field in emp['deductions']:
-                emp['deductions'][field] = Decimal(str(value))
-            self.save_data()
-            return True
-        return False
+    # Date selection
+    st.header("Pay Period")
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input("Start Date")
+    with col2:
+        end_date = st.date_input("End Date")
 
-    def delete_employee(self, id):
-        if id in st.session_state.employees:
-            del st.session_state.employees[id]
-            self.save_data()
-            return True
-        return False
+    # Overtime rate
+    overtime_rate = st.number_input("Overtime Rate per Hour (₱)", value=100)
 
+    # Create tabs for different functions
+    tab1, tab2 = st.tabs(["Employee Management", "Payroll Processing"])
 
-def main():
-    st.title('Weekly Payroll System')
-    payroll = PayrollSystem()
+    with tab1:
+        st.subheader("Employee Information")
+        
+        # Add new employee
+        st.write("Add New Employee")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            new_name = st.text_input("Employee Name")
+        with col2:
+            new_daily = st.number_input("Daily Rate", min_value=0.0)
+        with col3:
+            new_weekly = st.number_input("Weekly Rate", min_value=0.0)
+            
+        if st.button("Add Employee"):
+            if new_name and new_daily and new_weekly:
+                st.session_state.employees[new_name] = {
+                    'daily_rate': new_daily,
+                    'weekly_rate': new_weekly
+                }
+                st.success(f"Added employee: {new_name}")
 
-    with st.sidebar:
-        crud_action = st.radio("Select Action", ["View", "Add", "Edit", "Delete"])
+        # Display current employees
+        st.write("Current Employees")
+        employee_df = pd.DataFrame.from_dict(
+            st.session_state.employees,
+            orient='index',
+            columns=['daily_rate', 'weekly_rate']
+        )
+        st.dataframe(employee_df)
 
-        if crud_action == "Add":
-            with st.form('add_employee'):
-                st.subheader('Add New Employee')
-                new_id = st.number_input('ID', min_value=1, step=1, key="new_id")
-                new_name = st.text_input('Name', key="new_name")
-                new_daily_rate = st.number_input('Daily Rate', min_value=0.0, key="new_daily_rate")
-                new_weekly_rate = st.number_input('Weekly Rate', min_value=0.0, key="new_weekly_rate")
+    with tab2:
+        st.subheader("Payroll Processing")
+        
+        # Employee selection
+        selected_employee = st.selectbox(
+            "Select Employee",
+            options=list(st.session_state.employees.keys())
+        )
 
-                if st.form_submit_button('Add'):
-                    if new_id in st.session_state.employees:
-                        st.error('ID already exists!')
-                    elif payroll.add_employee(new_id, new_name, new_daily_rate, new_weekly_rate):
-                        st.success('Employee added successfully!')
-                        st.experimental_rerun()
+        # Get employee rates
+        employee_data = st.session_state.employees[selected_employee]
+        
+        # Overtime hours input
+        st.write("Overtime Hours")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            mon_ot = st.number_input("Monday OT", min_value=0.0)
+            thu_ot = st.number_input("Thursday OT", min_value=0.0)
+        with col2:
+            tue_ot = st.number_input("Tuesday OT", min_value=0.0)
+            fri_ot = st.number_input("Friday OT", min_value=0.0)
+        with col3:
+            wed_ot = st.number_input("Wednesday OT", min_value=0.0)
+            sat_ot = st.number_input("Saturday OT", min_value=0.0)
 
-        elif crud_action == "Delete":
-            if st.session_state.employees:
-                to_delete = st.selectbox(
-                    'Select Employee to Delete',
-                    options=[f"{emp['name']} (ID: {id})" for id, emp in st.session_state.employees.items()],
-                    key="delete_select"
-                )
-                if st.button('Delete', type='primary', key="delete_btn"):
-                    id_to_delete = int(to_delete.split('ID: ')[1].rstrip(')'))
-                    if payroll.delete_employee(id_to_delete):
-                        st.success('Employee deleted successfully!')
-                        st.experimental_rerun()
+        # Deductions
+        st.write("Deductions")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            cash_advance = st.number_input("Cash Advance", min_value=0.0)
+        with col2:
+            snacks = st.number_input("Snacks", min_value=0.0)
+        with col3:
+            sss = st.number_input("SSS Share", min_value=0.0)
 
-        elif crud_action == "Edit":
-            if st.session_state.employees:
-                employee_id = st.selectbox(
-                    'Select Employee to Edit',
-                    options=[f"{emp['name']} (ID: {id})" for id, emp in st.session_state.employees.items()],
-                    key="edit_select"
-                )
-                id_to_edit = int(employee_id.split('ID: ')[1].rstrip(')'))
-                emp = st.session_state.employees[id_to_edit]
+        # Calculate totals
+        if st.button("Calculate Pay"):
+            # Calculate overtime
+            total_ot_hours = mon_ot + tue_ot + wed_ot + thu_ot + fri_ot + sat_ot
+            overtime_pay = total_ot_hours * overtime_rate
+            
+            # Calculate total deductions
+            total_deductions = cash_advance + snacks + sss
+            
+            # Calculate final pay
+            total_pay = employee_data['weekly_rate'] + overtime_pay - total_deductions
+            
+            # Display results
+            st.write("---")
+            st.subheader("Payroll Summary")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write(f"Employee: {selected_employee}")
+                st.write(f"Weekly Rate: ₱{employee_data['weekly_rate']:,.2f}")
+                st.write(f"Overtime Hours: {total_ot_hours}")
+                st.write(f"Overtime Pay: ₱{overtime_pay:,.2f}")
+            with col2:
+                st.write(f"Total Deductions: ₱{total_deductions:,.2f}")
+                st.write(f"Final Pay: ₱{total_pay:,.2f}")
 
-                st.subheader('Edit Deductions')
-                for deduction_type in emp['deductions']:
-                    new_value = st.number_input(
-                        deduction_type.replace('_', ' ').title(),
-                        value=float(emp['deductions'][deduction_type]),
-                        key=f"edit_{deduction_type}"
-                    )
-                    if new_value != float(emp['deductions'][deduction_type]):
-                        payroll.update_employee(id_to_edit, deduction_type, new_value)
-                        st.experimental_rerun()
-
-    if st.session_state.employees:
-        week_dates = [(datetime.now() + timedelta(days=i)).strftime('%a\n%m/%d') for i in range(7)]
-        data = []
-
-        for id, emp in st.session_state.employees.items():
-            row = {
-                'ID': id,
-                'Name': emp['name'],
-                'Rate': float(emp['daily_rate'])
-            }
-
-            for i, date in enumerate(week_dates):
-                row[date] = float(emp['overtime_hours'][str(i)])
-                new_ot = st.number_input(
-                    f"OT for {emp['name']} on {date}",
-                    value=float(emp['overtime_hours'][str(i)]),
-                    key=f"ot_{id}_{i}",
-                    label_visibility="collapsed"
-                )
-                if new_ot != float(emp['overtime_hours'][str(i)]):
-                    payroll.update_employee(id, 'overtime', new_ot, i)
-                    st.experimental_rerun()
-
-            for k, v in emp['deductions'].items():
-                row[k.replace('_', ' ').title()] = float(v)
-
-            data.append(row)
-
-        df = pd.DataFrame(data)
-        st.dataframe(df, hide_index=True)
-
-
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    create_payroll_system()
