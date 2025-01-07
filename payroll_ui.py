@@ -10,7 +10,7 @@ class PayrollSystem:
         self.data_file = 'payroll_data.json'
         self.load_data()
         self.overtime_rate = Decimal('100')
-        
+    
     def load_data(self):
         if 'employees' not in st.session_state:
             st.session_state.employees = {}
@@ -26,7 +26,7 @@ class PayrollSystem:
                             save=False
                         )
                         emp = st.session_state.employees[int(emp_id)]
-                        emp['overtime_hours'] = {k: Decimal(str(v)) for k, v in emp_data.get('overtime_hours', {}).items()}
+                        emp['overtime'] = {day: Decimal(str(hours)) for day, hours in emp_data.get('overtime', {}).items()}
                         emp['deductions'] = {k: Decimal(str(v)) for k, v in emp_data.get('deductions', {}).items()}
 
     def save_data(self):
@@ -36,7 +36,7 @@ class PayrollSystem:
                 'name': emp_data['name'],
                 'daily_rate': str(emp_data['daily_rate']),
                 'weekly_rate': str(emp_data['weekly_rate']),
-                'overtime_hours': {k: str(v) for k, v in emp_data['overtime_hours'].items()},
+                'overtime': {day: str(hours) for day, hours in emp_data['overtime'].items()},
                 'deductions': {k: str(v) for k, v in emp_data['deductions'].items()}
             }
         with open(self.data_file, 'w') as f:
@@ -50,7 +50,7 @@ class PayrollSystem:
             'name': name,
             'daily_rate': Decimal(str(daily_rate)),
             'weekly_rate': Decimal(str(weekly_rate)),
-            'overtime_hours': {str(i): Decimal('0') for i in range(7)},
+            'overtime': {str(i): Decimal('0') for i in range(7)},
             'deductions': {
                 'cash_advance': Decimal('0'),
                 'snacks': Decimal('0'),
@@ -64,8 +64,8 @@ class PayrollSystem:
     def update_employee(self, id, field, value, day=None):
         if id in st.session_state.employees:
             emp = st.session_state.employees[id]
-            if field == 'overtime':
-                emp['overtime_hours'][str(day)] = Decimal(str(value))
+            if field == 'overtime' and day is not None:
+                emp['overtime'][str(day)] = Decimal(str(value))
             elif field in emp['deductions']:
                 emp['deductions'][field] = Decimal(str(value))
             self.save_data()
@@ -81,10 +81,8 @@ class PayrollSystem:
 
 def main():
     st.title('Weekly Payroll System')
-    
     payroll = PayrollSystem()
 
-    # Sidebar CRUD operations
     with st.sidebar:
         crud_action = st.radio("Select Action", ["View", "Add", "Edit", "Delete"])
         
@@ -131,42 +129,31 @@ def main():
                         payroll.update_employee(id_to_edit, deduction_type, new_value)
                         st.rerun()
 
-    # Main content - Timesheet view
     if st.session_state.employees:
         week_dates = [(datetime.now() + timedelta(days=i)).strftime('%a\n%m/%d') for i in range(7)]
         
-        data = []
+        st.subheader('Timesheet')
         for id, emp in st.session_state.employees.items():
-            row = {
-                'ID': id,
-                'Name': emp['name'],
-                'Rate': float(emp['daily_rate'])
-            }
+            st.write(f"### {emp['name']} (Rate: ₱{float(emp['daily_rate']):.2f})")
+            cols = st.columns(7)
             
-            # Add overtime hours for each day
-            for i, date in enumerate(week_dates):
-                ot_key = f'OT_{i}'
-                row[date] = float(emp['overtime_hours'][str(i)])
-                
-                # Make overtime hours editable
-                new_ot = st.number_input(
-                    f"OT for {emp['name']} on {date}",
-                    value=float(emp['overtime_hours'][str(i)]),
-                    key=f"ot_{id}_{i}",
-                    label_visibility="collapsed"
-                )
-                if new_ot != float(emp['overtime_hours'][str(i)]):
-                    payroll.update_employee(id, 'overtime', new_ot, i)
-                    st.rerun()
+            for i, (col, date) in enumerate(zip(cols, week_dates)):
+                with col:
+                    st.write(date)
+                    new_ot = st.number_input(
+                        "Overtime Hours",
+                        value=float(emp['overtime'][str(i)]),
+                        key=f"ot_{id}_{i}",
+                        label_visibility="collapsed"
+                    )
+                    if new_ot != float(emp['overtime'][str(i)]):
+                        payroll.update_employee(id, 'overtime', new_ot, i)
+                        st.rerun()
             
-            # Add deductions
+            st.write("Deductions:")
             for k, v in emp['deductions'].items():
-                row[k.replace('_', ' ').title()] = float(v)
-            
-            data.append(row)
-        
-        df = pd.DataFrame(data)
-        st.dataframe(df, hide_index=True)
+                st.write(f"- {k.replace('_', ' ').title()}: ₱{float(v):.2f}")
+            st.divider()
 
 if __name__ == '__main__':
     main()
